@@ -14,8 +14,12 @@ if(addWorkerForm) {
         if (data.status === 'success') {
             resultDiv.innerText = `Dodano pracownika ID: ${data.userId}`;
             resultDiv.style.color = 'green';
-        } else {
+        } else if (data.status === 'no_face_detected') {
+            resultDiv.innerText = "Błąd: Nie wykryto twarzy"
+            resultDiv.style.color = 'red';
+        }  else {
             resultDiv.innerText = "Błąd: " + JSON.stringify(data);
+            resultDiv.style.color = 'red';
         }
     });
 }

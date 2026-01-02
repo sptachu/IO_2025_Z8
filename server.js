@@ -22,25 +22,39 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
     const imagePath = req.file.path;
 
     // Uruchomienie Pythona w celu "stworzenia wektora twarzy"
-    const pythonProcess = spawn('py', ['./image_script.py', imagePath]);
+    const pythonProcess = spawn('py', ['./check_face.py', imagePath]);
     let resultString = '';
 
     pythonProcess.stdout.on('data', (data) => resultString += data.toString());
     pythonProcess.on('close', (code) => {
+        console.log("RAW PYTHON OUTPUT:", resultString);
         try {
+            if (!resultString) {
+                throw new Error("Python script returned empty result");
+            }
+
             const jsonResult = JSON.parse(resultString);
-            if (jsonResult.error) return res.status(400).json(jsonResult);
+            
+            if (jsonResult.error) {
+                console.log("Python returned logical error:", jsonResult.error);
+                return res.status(400).json(jsonResult);
+            }
 
-            usersDB.push({
-                id: employeeId,
-                name: name,
-                photoPath: imagePath,
-                activeQrToken: null, // Na początku brak przepustki
-                blocked: false       // Domyślnie ma uprawnienia
-            });
+            if (jsonResult.status){
+                usersDB.push({
+                    id: employeeId,
+                    name: name,
+                    photoPath: imagePath,
+                    activeQrToken: null, // Na początku brak przepustki
+                    blocked: false       // Domyślnie ma uprawnienia
+                });
 
-            console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
-            res.json({ status: 'success', userId: employeeId });
+                console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
+                res.json({ status: 'success', userId: employeeId });
+            } else {
+                console.log(`[Rejestracja]: Nie wykryto twarzy na zdjęciu`);
+                res.json({ status: 'no_face_detected'});
+            }
         } catch (e) {
             res.status(500).send("Błąd analizy zdjęcia");
         }
@@ -94,26 +108,28 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
 
     // KROK 3: Weryfikacja Biometryczna (Python)
     // Uruchamiamy skrypt na zdjęciu z bramki, żeby sprawdzić, czy to "twarz"
-    const pythonProcess = spawn('py', ['./image_script.py', gateImagePath]);
+    const pythonProcess = spawn('py', ['./compare_faces.py', gateImagePath, user.photoPath]);
     let resultString = '';
 
     pythonProcess.stdout.on('data', (data) => resultString += data.toString());
 
     pythonProcess.on('close', (code) => {
+        console.log("RAW PYTHON OUTPUT:", resultString);
         try {
             const jsonResult = JSON.parse(resultString);
-
-            // Porównanie wektorów
-            // W prawdziwym życiu porównalibyśmy jsonResult (z bramki) z user.faceVector (z bazy).
-            // SYMULACJA: Zakładamy, że jeśli Python poprawnie wykrył obrazek i kod QR jest OK, to jest to ta osoba.
-            // W wersji finalnej trzeba będzie użyć czegos w rodxaju biblioteki face_recognition do compare_faces().
+            console.log(jsonResult)
 
             if (jsonResult.error) {
                 denialReason = "Błąd kamery / Nie wykryto twarzy";
                 accessGranted = false;
             } else {
-                // Symulujemy 90% skuteczności
-                accessGranted = true;
+                if (!jsonResult.status){
+                    denialReason = jsonResult.message
+                    accessGranted = false;
+                }
+                else {
+                    accessGranted = true;
+                }
             }
 
             if (accessGranted) {
@@ -121,7 +137,7 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
                 res.json({
                     status: 'allowed',
                     message: `Witaj, ${user.name}!`,
-                    details: jsonResult.details
+                    details: jsonResult.message
                 });
             } else {
                 logAttempt(user.id, user.name, false, denialReason, timestamp);
