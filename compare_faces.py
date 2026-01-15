@@ -1,3 +1,4 @@
+#compare_faces.py
 import sys
 import json
 import face_recognition
@@ -27,9 +28,9 @@ def process_image(gate_image_path, database_image_path):
                 "status": False,
                 "message": "Faces are mismatched, no access"
             }
-        
+
         print(json.dumps(result))
-        
+
     except FileNotFoundError:
         # Handle case where file doesn't exist
         error = {"error": "File not found. Please check the path."}

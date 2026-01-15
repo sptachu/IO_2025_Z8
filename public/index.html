@@ -2,19 +2,24 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>System Kontroli Dostępu</title>
+    <title>System Kontroli Dostępu - Biometria i QR</title>
     <style>
-        body { font-family: sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; background-color: #f4f4f4;}
+        body { font-family: sans-serif; max-width: 1000px; margin: 20px auto; padding: 20px; background-color: #f4f4f4;}
         .container { display: flex; gap: 20px; }
         .panel { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .full-width { width: 100%; margin-top: 20px; }
         h2 { border-bottom: 2px solid #007bff; padding-bottom: 10px; color: #333; }
+        h3 { color: #555; margin-top: 20px; }
         input { width: 100%; padding: 8px; margin: 5px 0 15px 0; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; margin-bottom: 10px; border-radius: 4px; }
         button:hover { background: #0056b3; }
-        .success-box { background: #d4edda; color: #155724; padding: 10px; margin-top: 10px; border: 1px solid #c3e6cb; }
-        .error-box { background: #f8d7da; color: #721c24; padding: 10px; margin-top: 10px; border: 1px solid #f5c6cb; }
 
+        .camera-box { background: #000; width: 100%; height: 240px; border-radius: 4px; margin-bottom: 10px; overflow: hidden; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        canvas { display: none; }
+
+        .success-box { background: #d4edda; color: #155724; padding: 10px; margin-top: 10px; border: 1px solid #c3e6cb; border-radius: 4px; }
+        .error-box { background: #f8d7da; color: #721c24; padding: 10px; margin-top: 10px; border: 1px solid #f5c6cb; border-radius: 4px; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #f2f2f2; }
@@ -22,7 +27,7 @@
 </head>
 <body>
 
-    <h1 style="text-align:center;">System Kontroli Dostępu i Rejestracji Czasu Pracy</h1>
+    <h1 style="text-align:center;">System Kontroli Dostępu i Biometrii</h1>
 
     <div class="container">
         <div class="panel">
@@ -32,51 +37,61 @@
             <form id="addWorkerForm">
                 <input type="text" name="name" placeholder="Imię i Nazwisko" required>
                 <input type="text" name="employeeId" placeholder="ID Pracownika" required>
-                <label>Zdjęcie wzorcowe:</label>
-                <input type="file" name="photo" required>
-                <button type="submit">Zarejestruj</button>
+
+                <label>Podgląd kamery (zdjęcie wzorcowe):</label>
+                <div class="camera-box">
+                    <video id="adminVideo" autoplay muted></video>
+                </div>
+
+                <button type="button" onclick="setupCamera('adminVideo')">Uruchom Kamerę</button>
+                <button type="button" onclick="stopCamera('adminVideo')" style="background: #dc3545;">Wyłącz Kamerę</button>
+                <button type="submit" style="background: #28a745;">Zarejestruj Pracownika</button>
             </form>
             <p id="add-result"></p>
+
             <hr>
 
             <h3>2. Wydaj Przepustkę</h3>
             <input type="text" id="qrEmployeeId" placeholder="ID Pracownika">
             <button onclick="generateQR()">Generuj Kod QR</button>
-            <div id="qr-display"></div>
+            <div id="qr-display" style="text-align: center; margin-top: 10px;"></div>
         </div>
 
         <div class="panel" style="border: 2px solid #007bff;">
-            <h2>🚧 Symulator Bramki (Kiosk)</h2>
-            <p>To okno symuluje urządzenie przy wejściu do fabryki.</p>
+            <h2>🚧 Symulator Bramki</h2>
+            <p style="font-size: 0.9em; color: #666;">Zeskanuj QR i ustaw się przed kamerą.</p>
 
             <form id="gateForm">
-                <label>1. Zeskanuj Kod QR (Wklej token):</label>
-                <input type="text" name="qrToken" placeholder="QR_..." required>
+                <label>1. Kod QR (Token):</label>
+                <input type="text" id="qrTokenInput" name="qrToken" placeholder="Wklej tutaj token QR_..." required>
 
-                <label>2. Kamera (Wgraj zdjęcie osoby wchodzącej):</label>
-                <input type="file" name="gatePhoto" required>
-
-                <button type="submit" style="background-color: #28a745;">WERYFIKUJ WEJŚCIE</button>
+                <label>2. Weryfikacja twarzy:</label>
+                <div class="camera-box">
+                    <video id="gateVideo" autoplay muted></video>
+                </div>
+                <button type="button" onclick="setupCamera('gateVideo')">Aktywuj Kamerę Bramki</button>
+                <button type="button" onclick="stopCamera('gateVideo')" style="background: #dc3545;">Wyłącz Kamerę Bramki</button>
+                <button type="submit" style="background-color: #007bff; font-weight: bold;">WERYFIKUJ WEJŚCIE</button>
             </form>
             <div id="gate-result"></div>
         </div>
     </div>
 
+    <canvas id="snapshotCanvas"></canvas>
+
     <div class="panel full-width">
-        <h2>📊 Raporty i Logi Systemowe</h2>
-        <p>Rejestr wszystkich prób wejścia, nadużyć i wykrytych incydentów.</p>
+        <h2>📊 Logi i Raporty Wejść</h2>
         <button onclick="loadLogs()" style="width: auto; background: #6c757d;">Odśwież Listę</button>
         <table id="logsTable">
             <thead>
                 <tr>
                     <th>Godzina</th>
-                    <th>Pracownik / Osoba</th>
+                    <th>Pracownik</th>
                     <th>Status</th>
-                    <th>Szczegóły / Powód</th>
+                    <th>Szczegóły</th>
                 </tr>
             </thead>
-            <tbody>
-                </tbody>
+            <tbody></tbody>
         </table>
     </div>
 

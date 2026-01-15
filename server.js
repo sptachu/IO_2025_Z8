@@ -1,3 +1,4 @@
+//server.js
 const express = require('express');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -34,7 +35,7 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
             }
 
             const jsonResult = JSON.parse(resultString);
-            
+
             if (jsonResult.error) {
                 console.log("Python returned logical error:", jsonResult.error);
                 return res.status(400).json(jsonResult);
