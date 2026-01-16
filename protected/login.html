@@ -1,17 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logowanie</title>
+    <title>Logowanie - System Kontroli</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .login-card {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 350px;
+            text-align: center;
+        }
+        h2 { color: #1c1e21; margin-bottom: 25px; font-weight: 600; }
+        input {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 15px;
+            border: 1px solid #dddfe2;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px; /* Zapobiega auto-zoomowi na iOS */
+        }
+        input:focus {
+            border-color: #1877f2;
+            outline: none;
+            box-shadow: 0 0 0 2px #e7f3ff;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:active { background-color: #166fe5; transform: scale(0.98); }
+        .footer-text { color: #606770; font-size: 14px; margin-top: 20px; }
+    </style>
 </head>
 <body>
-    <form id="loginForm">
-        <input type="text" name="name" id="nameInput" placeholder="Imię i Nazwisko" required>
-        <input type="password" name="password" id="passwordInput" placeholder="Hasło" required>
-        <button type="submit">Zaloguj się</button>
-    </form>
-    
+    <div class="login-card">
+        <h2>Witaj ponownie</h2>
+        <form id="loginForm">
+            <input type="text" name="name" id="nameInput" placeholder="Imię i Nazwisko" required>
+            <input type="password" name="password" id="passwordInput" placeholder="Hasło" required>
+            <button type="submit">Zaloguj się</button>
+        </form>
+        <div class="footer-text">Autoryzacja biometryczna</div>
+    </div>
     <script src="login.js"></script>
 </body>
 </html>

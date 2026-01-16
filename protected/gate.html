@@ -1,11 +1,227 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gate</title>
+    <title>Bramka Biometryczna - SKD</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        :root {
+            --status-none: #444;
+            --status-scan: #007bff;
+            --status-load: #ffc107;
+            --status-ok: #28a745;
+            --status-fail: #dc3545;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .gate-card {
+            width: 90%;
+            max-width: 400px;
+            background: #1e1e1e;
+            padding: 25px;
+            border-radius: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+            text-align: center;
+        }
+
+        .viewport {
+            position: relative;
+            width: 100%;
+            height: 350px;
+            background: #000;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 5px solid var(--status-none);
+            transition: border-color 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .viewport.scanning { border-color: var(--status-scan); }
+        .viewport.processing { border-color: var(--status-load); }
+        .viewport.allowed { border-color: var(--status-ok); }
+        .viewport.denied { border-color: var(--status-fail); }
+
+        video {
+            min-width: 100%;
+            min-height: 100%;
+            object-fit: cover;
+        }
+
+        /* Owal pomocniczy dla twarzy */
+        .face-guide {
+            position: absolute;
+            width: 180px;
+            height: 240px;
+            border: 3px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 50% / 45%;
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+        .viewport.processing .face-guide {
+            display: block;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.5; }
+        }
+
+        #status-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin: 20px 0;
+            min-height: 1.5em;
+        }
+
+        .btn-group { display: flex; gap: 15px; }
+        .btn {
+            flex: 1; padding: 15px; border: none; border-radius: 15px;
+            font-weight: bold; cursor: pointer; color: white;
+        }
+        .btn-start { background: var(--status-ok); }
+        .btn-stop { background: var(--status-fail); }
+
+        canvas { display: none; }
+    </style>
 </head>
 <body>
-    
+
+    <div class="gate-card">
+        <div id="status-text">Gotowy do pracy</div>
+
+        <div id="viewport" class="viewport">
+            <div class="face-guide"></div>
+            <video id="video" autoplay playsinline></video>
+        </div>
+
+        <div class="btn-group" style="margin-top: 20px;">
+            <button class="btn btn-start" onclick="activateGate()">START</button>
+            <button class="btn btn-stop" onclick="deactivateGate()">STOP</button>
+        </div>
+    </div>
+
+    <canvas id="procCanvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvasElement = document.getElementById('procCanvas');
+        const canvas = canvasElement.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const viewport = document.getElementById('viewport');
+
+        let isLive = false;
+        let animationFrameId = null;
+
+        async function activateGate() {
+            try {
+                const constraints = {
+                    video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                isLive = true;
+                updateUI("Zeskanuj kod QR", "scanning");
+                scanLoop();
+            } catch (err) {
+                updateUI("Błąd kamery!", "denied");
+            }
+        }
+
+        function deactivateGate() {
+            isLive = false;
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
+            }
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            updateUI("Gotowy do pracy", "");
+        }
+
+        function scanLoop() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA && isLive) {
+                canvasElement.width = video.videoWidth;
+                canvasElement.height = video.videoHeight;
+                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+
+                const imgData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const qrCode = jsQR(imgData.data, imgData.width, imgData.height);
+
+                if (qrCode) {
+                    isLive = false;
+                    handleVerification(qrCode.data);
+                    return;
+                }
+            }
+            if (isLive) animationFrameId = requestAnimationFrame(scanLoop);
+        }
+
+        async function handleVerification(token) {
+            updateUI("KOD OK! Ustaw twarz w owalu...", "processing");
+
+            // 1. Krótka pauza na stabilizację ostrości
+            await new Promise(r => setTimeout(r, 1200));
+
+            // 2. SKALOWANIE: Zmniejszamy obraz do 400px szerokości, by przyspieszyć Python
+            const targetWidth = 400;
+            const scale = targetWidth / video.videoWidth;
+            canvasElement.width = targetWidth;
+            canvasElement.height = video.videoHeight * scale;
+            canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+
+            canvasElement.toBlob(async (photoBlob) => {
+                const fd = new FormData();
+                fd.append('qrToken', token);
+                fd.append('gatePhoto', photoBlob, 'capture.jpg');
+
+                try {
+                    const res = await fetch('/api/verify-entry', { method: 'POST', body: fd });
+                    const result = await res.json();
+
+                    if (result.status === 'allowed') {
+                        updateUI("ZAPRASZAMY!", "allowed");
+                    } else {
+                        updateUI("ODMOWA: " + (result.message || "Błąd"), "denied");
+                    }
+                } catch (e) {
+                    updateUI("BŁĄD POŁĄCZENIA", "denied");
+                }
+
+                setTimeout(() => {
+                    if (video.srcObject) {
+                        isLive = true;
+                        updateUI("Zeskanuj kod QR", "scanning");
+                        scanLoop();
+                    }
+                }, 4000);
+
+            }, 'image/jpeg', 0.7);
+        }
+
+        function updateUI(text, statusClass) {
+            statusText.innerText = text;
+            viewport.className = "viewport " + statusClass;
+            if (statusClass === "allowed") statusText.style.color = "var(--status-ok)";
+            else if (statusClass === "denied") statusText.style.color = "var(--status-fail)";
+            else if (statusClass === "scanning") statusText.style.color = "var(--status-scan)";
+            else if (statusClass === "processing") statusText.style.color = "var(--status-load)";
+            else statusText.style.color = "#aaa";
+        }
+    </script>
 </body>
 </html>

@@ -1,14 +1,97 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User panel</title>
+    <title>Twój Panel - Przepustka</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        h1 { font-size: 22px; color: #333; margin-bottom: 20px; }
+
+        /* Styl kontenera QR */
+        #qr-display {
+            margin: 20px 0;
+            min-height: 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #ddd;
+            border-radius: 15px;
+            background-color: #fafafa;
+            transition: all 0.3s ease;
+        }
+        #qr-display img {
+            max-width: 280px;
+            width: 90%;
+            border: 5px solid white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-radius: 10px;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            margin: 10px 0;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        #qrButton {
+            background-color: #007bff;
+            color: white;
+            box-shadow: 0 4px 14px rgba(0,123,255,0.3);
+        }
+        #qrButton:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        #logoutButton {
+            background-color: transparent;
+            color: #dc3545;
+            border: 1px solid #dc3545;
+            margin-top: 15px;
+        }
+        .info-text { font-size: 13px; color: #666; margin-top: 10px; }
+        .error-text { color: #dc3545; font-size: 14px; margin-top: 10px; display: none; }
+    </style>
 </head>
-<body onload="checkQR()">
-    <button id="qrButton">Wygeneruj kod QR</button>
-    <button id="logoutButton">Wyloguj się</button>
+<body>
+
+    <div class="container">
+        <h1>Twoja Przepustka</h1>
+
+        <div id="qr-display">
+            <p id="qr-placeholder">Czekam na akcję...</p>
+        </div>
+
+        <div id="error-message" class="error-text"></div>
+
+        <button id="qrButton" class="btn">Wygeneruj kod QR</button>
+        <p class="info-text">Kod jest ważny przez 60 sekund</p>
+
+        <button id="logoutButton" class="btn">Wyloguj się</button>
+    </div>
+
     <script src="qr.js"></script>
-    <div id="qr-display" style="text-align: center; margin-top: 10px;"></div>
 </body>
 </html>

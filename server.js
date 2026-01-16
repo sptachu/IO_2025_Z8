@@ -63,7 +63,7 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
                 console.log("Python returned logical error:", jsonResult.error);
                 return res.status(400).json(jsonResult);
             }
-            
+
             if (jsonResult.status){
                 let idBool = true;
                 usersDB.forEach((element) => {
@@ -82,10 +82,10 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
                         blocked: false       // Domyślnie ma uprawnienia
                     });
                     console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
-                    res.json({ status: 'success', userId: employeeId });         
+                    res.json({ status: 'success', userId: employeeId });
                 } else {
                     console.log(`[Rejestracja]: Pokrywające się id, nie dodano pracownika`);
-                    res.json({ status: 'failure'});     
+                    res.json({ status: 'failure'});
                 }
             } else {
                 console.log(`[Rejestracja]: Nie wykryto twarzy na zdjęciu`);
@@ -109,11 +109,11 @@ app.post('/api/generate-qr', (req, res) => {
             // Generowanie tokena (ważny np. 1 dzień - tu symulujemy)
             const qrToken = `QR_${user.id}_${Date.now()}`;
             user.activeQrToken = qrToken;
-            
+
             setTimeout(() => {
                 user.activeQrToken = false;
                 console.log(`QR for ${user.name} has expired and been cleared.`);
-            }, 60000);
+            }, 300000);
 
             console.log(`Użytkownik ${user.name} wygenerował kod QR`);
             res.json({ status: 'success', qrToken: qrToken });
@@ -263,6 +263,11 @@ app.get('/', (req, res) => {
     let pageToSend = checkCookie(cookies)
     res.sendFile(pageToSend, { root: '.' });
 })
+
+// Endpoint dla bramki (Kiosku)
+app.get('/gate', (req, res) => {
+    res.sendFile('./protected/gate.html', { root: '.' });
+});
 
 // Funkcja pomocnicza do logowania
 function logAttempt(userId, userName, success, reason, time) {
