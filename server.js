@@ -15,6 +15,7 @@ app.use(express.json());
 
 // --- BAZA DANYCH  ---
 const usersDB = [];     // Tutaj trzymamy pracowników
+// We need this to access admin panel, from where we can add more users.
 usersDB.push({
     id: 1,
     name: "admin",
@@ -25,6 +26,7 @@ usersDB.push({
     blocked: false
 });
 
+// For testing purposes
 usersDB.push({
     id: 2,
     name: "test",
@@ -273,12 +275,12 @@ function logAttempt(userId, userName, success, reason, time) {
 function checkCookie(cookies){
     if (cookies.user) {
         if (cookies.user == usersDB[0].uuid){
-            return('./public/adminPage.html')
+            return('./protected/adminPage.html')
         } else {
-            return('./public/qr.html')
+            return('./protected/qr.html')
         }
     } else {
-        return('./public/login.html')
+        return('./protected/login.html')
     }
 }
 
