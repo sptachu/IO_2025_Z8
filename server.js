@@ -4,22 +4,43 @@ const { spawn } = require('child_process');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
-
+const cookieParser = require('cookie-parser');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
+const { v4: uuidv4 } = require('uuid');
 
+app.use(cookieParser());
 app.use(express.static('public'));
 app.use(express.json());
 
 // --- BAZA DANYCH  ---
 const usersDB = [];     // Tutaj trzymamy pracowników
+usersDB.push({
+    id: 1,
+    name: "admin",
+    password: "admin",
+    uuid: uuidv4(),
+    photoPath: "",
+    activeQrToken: false,
+    blocked: false
+});
+
+usersDB.push({
+    id: 2,
+    name: "test",
+    password: "test",
+    uuid: uuidv4(),
+    photoPath: "",
+    activeQrToken: false,
+    blocked: false
+});
 const accessLogs = [];  // Tutaj trzymamy historię wejść (Raporty)
 
 // --- ENDPOINTY ---
 
 // 1. REJESTRACJA PRACOWNIKA (ADMIN)
 app.post('/api/add-employee', upload.single('photo'), (req, res) => {
-    const { name, employeeId } = req.body;
+    const { name, employeeId, password } = req.body;
     const imagePath = req.file.path;
 
     // Uruchomienie Pythona w celu "stworzenia wektora twarzy"
@@ -40,18 +61,30 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
                 console.log("Python returned logical error:", jsonResult.error);
                 return res.status(400).json(jsonResult);
             }
-
+            
             if (jsonResult.status){
-                usersDB.push({
-                    id: employeeId,
-                    name: name,
-                    photoPath: imagePath,
-                    activeQrToken: null, // Na początku brak przepustki
-                    blocked: false       // Domyślnie ma uprawnienia
-                });
-
-                console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
-                res.json({ status: 'success', userId: employeeId });
+                let idBool = true;
+                usersDB.forEach((element) => {
+                    if(element.id == employeeId){
+                        idBool = false;
+                    }
+                })
+                if (idBool){
+                    usersDB.push({
+                        id: employeeId,
+                        name: name,
+                        password: password,
+                        uuid: uuidv4(),
+                        photoPath: imagePath,
+                        activeQrToken: false, // Na początku brak przepustki
+                        blocked: false       // Domyślnie ma uprawnienia
+                    });
+                    console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
+                    res.json({ status: 'success', userId: employeeId });         
+                } else {
+                    console.log(`[Rejestracja]: Pokrywające się id, nie dodano pracownika`);
+                    res.json({ status: 'failure'});     
+                }
             } else {
                 console.log(`[Rejestracja]: Nie wykryto twarzy na zdjęciu`);
                 res.json({ status: 'no_face_detected'});
@@ -64,18 +97,68 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
 
 // 2. GENEROWANIE PRZEPUSTKI (ADMIN)
 app.post('/api/generate-qr', (req, res) => {
+    const cookies = req.cookies;
+    if (cookies.user) {
+        const user = usersDB.find(u => u.uuid === cookies.user);
+
+        if (!user) return res.status(404).json({ error: "Nie znaleziono pracownika" });
+
+        if (!user.activeQrToken) {
+            // Generowanie tokena (ważny np. 1 dzień - tu symulujemy)
+            const qrToken = `QR_${user.id}_${Date.now()}`;
+            user.activeQrToken = qrToken;
+            
+            setTimeout(() => {
+                user.activeQrToken = false;
+                console.log(`QR for ${user.name} has expired and been cleared.`);
+            }, 60000);
+
+            console.log(`Użytkownik ${user.name} wygenerował kod QR`);
+            res.json({ status: 'success', qrToken: qrToken });
+        } else {
+            res.json({ status: 'failure', error: 'Kod QR jest już aktywny' });
+        }
+    } else {
+        location.reload()
+    }
+});
+
+app.post('/api/generate-qr-admin', (req, res) => {
     const { employeeId } = req.body;
+    console.log(employeeId)
     const user = usersDB.find(u => u.id === employeeId);
+    console.log(user)
 
     if (!user) return res.status(404).json({ error: "Nie znaleziono pracownika" });
 
-    // Generowanie tokena (ważny np. 1 dzień - tu symulujemy)
-    const qrToken = `QR_${employeeId}_${Date.now()}`;
-    user.activeQrToken = qrToken;
+    if (!user.activeQrToken) {
+        // Generowanie tokena (ważny np. 1 dzień - tu symulujemy)
+        const qrToken = `QR_${employeeId}_${Date.now()}`;
+        user.activeQrToken = qrToken;
 
-    console.log(`[Admin]: Wygenerowano QR dla ${user.name}`);
-    res.json({ status: 'success', qrToken: qrToken });
+        setTimeout(() => {
+            user.activeQrToken = false;
+            console.log(`QR dla użytkownika ${user.name} wygasł`);
+        }, 60000);
+
+        console.log(`[Admin]: Wygenerowano QR dla ${user.name}`);
+        res.json({ status: 'success', qrToken: qrToken });
+    } else {
+        res.json({ status: 'failure', error: 'Kod QR jest już aktywny' });
+    }
+
 });
+
+app.post('/api/checkForQR', (req, res) => {
+    const cookies = req.cookies;
+    const user = usersDB.find(u => u.uuid === cookies.user);
+
+    if (user.activeQrToken) {
+        res.json({ status: true, qrToken: user.activeQrToken });
+    } else {
+        res.json({status: false})
+    }
+})
 
 // 3. BRAMKA WEJŚCIOWA (KIOSK)  ROZBUDOWANE "PROCESS IMAGE"
 // Skan QR + Analiza Twarzy
@@ -157,11 +240,46 @@ app.get('/api/logs', (req, res) => {
     res.json(accessLogs.reverse()); // Najnowsze na górze
 });
 
+// Handler logowania
+app.post('/api/login-handle', (req, res) => {
+    let loginInfo = req.body
+    let foundBool = false;
+    usersDB.forEach((element) => {
+        if (element.name == loginInfo.name && element.password == loginInfo.password){
+            foundBool = true
+            res.json({status: true, uuid: element.uuid})
+        }
+    })
+    if (!foundBool){
+        res.json({status: false})
+    }
+})
+
+// Landing page, decyzja gdzie wysłać usera
+app.get('/', (req, res) => {
+    let cookies = req.cookies
+    let pageToSend = checkCookie(cookies)
+    res.sendFile(pageToSend, { root: '.' });
+})
+
 // Funkcja pomocnicza do logowania
 function logAttempt(userId, userName, success, reason, time) {
     const entry = { userId, userName, success, reason, time };
     accessLogs.push(entry);
     console.log(`[BRAMKA]: ${success ? 'WEJŚCIE' : 'ODMOWA'} -> ${userName} (${reason})`);
+}
+
+// Funkcja pomocnicza do sprawdzania ciasteczek
+function checkCookie(cookies){
+    if (cookies.user) {
+        if (cookies.user == usersDB[0].uuid){
+            return('./public/adminPage.html')
+        } else {
+            return('./public/qr.html')
+        }
+    } else {
+        return('./public/login.html')
+    }
 }
 
 app.listen(3000, () => console.log('System Kontroli Dostępu (Server + Kiosk) działa na porcie 3000'));
