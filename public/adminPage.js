@@ -184,5 +184,81 @@ document.getElementById("logoutButton").onclick = async function () {
     location.reload()
 }
 
+// --- 5. ZARZĄDZANIE PRACOWNIKAMI ---
+
+// Pobieranie i wyświetlanie listy pracowników
+async function loadEmployees() {
+    const tableBody = document.querySelector('#employeesTable tbody');
+    if(!tableBody) return;
+
+    const res = await fetch('/api/get-employees');
+    const users = await res.json();
+
+    tableBody.innerHTML = users.map(user => {
+        // Nie pozwól usuwać/blokować samego siebie (Admina)
+        const isAdmin = user.role === 'admin';
+        const blockBtnText = user.blocked ? 'Odblokuj' : 'Zablokuj';
+        const blockBtnColor = user.blocked ? '#28a745' : '#ffc107'; // Zielony / Żółty
+
+        return `
+        <tr style="background-color: ${user.blocked ? '#f8d7da' : 'white'}">
+            <td>${user.id}</td>
+            <td>${user.name} ${isAdmin ? '👑' : ''}</td>
+            <td>${user.role}</td>
+            <td>
+                ${!isAdmin ? `
+                <button onclick="toggleBlock('${user.uuid}', ${user.blocked})" 
+                        style="width: auto; padding: 5px; background: ${blockBtnColor}; color: black;">
+                    ${blockBtnText}
+                </button>
+                <button onclick="deleteUser('${user.uuid}')" 
+                        style="width: auto; padding: 5px; background: #dc3545;">
+                    Usuń
+                </button>
+                ` : '<span style="color:gray">Brak akcji</span>'}
+            </td>
+        </tr>
+    `}).join('');
+}
+
+// Funkcja blokowania/odblokowania
+async function toggleBlock(uuid, currentStatus) {
+    if(!confirm(`Czy na pewno chcesz ${currentStatus ? 'odblokować' : 'zablokować'} tego pracownika?`)) return;
+
+    const res = await fetch('/api/toggle-block-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid: uuid, block: !currentStatus }) // Wysyłamy odwrotność obecnego stanu
+    });
+
+    const data = await res.json();
+    if(data.status === 'success') {
+        loadEmployees(); // Odśwież tabelę
+    } else {
+        alert("Błąd: " + data.error);
+    }
+}
+
+// Funkcja usuwania użytkownika
+async function deleteUser(uuid) {
+    if(!confirm("Czy na pewno chcesz trwale usunąć tego pracownika? Tej operacji nie można cofnąć.")) return;
+
+    const res = await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid: uuid })
+    });
+
+    const data = await res.json();
+    if(data.status === 'success') {
+        loadEmployees(); // Odśwież tabelę
+    } else {
+        alert("Błąd: " + data.error);
+    }
+}
+
+// Dodaj wywołanie przy starcie, żeby tabela nie była pusta
+loadEmployees();
+
 // Załaduj logi przy starcie
 loadLogs();

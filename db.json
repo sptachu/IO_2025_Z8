@@ -4,37 +4,22 @@
       "id": 1,
       "name": "admin",
       "password": "admin",
-      "uuid": "f868ec06-de04-4d85-9eb1-b3bb04263d04",
+      "uuid": "6b1955e9-29e8-45c0-b41d-5fe2ee03ed0b",
       "photoPath": "",
       "activeQrToken": false,
-      "blocked": false
+      "blocked": false,
+      "role": "admin"
     },
     {
       "id": 2,
       "name": "test",
       "password": "test",
-      "uuid": "af80d973-2868-4e92-9d16-ba4053029555",
+      "uuid": "88843255-0ae7-4046-acf7-430281d72fdf",
       "photoPath": "",
       "activeQrToken": false,
-      "blocked": false
-    },
-    {
-      "id": "xd",
-      "name": "xd",
-      "password": "xd",
-      "uuid": "ec054ca6-a278-44c4-b479-51cf947f6d30",
-      "photoPath": "uploads\\5753907b05936ccae397e160e6304b98",
-      "activeQrToken": "QR_xd_1768738014752",
-      "blocked": false
+      "blocked": false,
+      "role": "worker"
     }
   ],
-  "accessLogs": [
-    {
-      "userId": "xd",
-      "userName": "xd",
-      "success": true,
-      "reason": "OK",
-      "time": "2026-01-18T12:07:13.266Z"
-    }
-  ]
+  "accessLogs": []
 }

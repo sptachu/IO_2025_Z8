@@ -1,5 +1,5 @@
 //server.js
-require('dotenv').config(); // <--- DODAJ TO NA SAMYM POCZĄTKU
+require('dotenv').config();
 const express = require('express');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -27,8 +27,10 @@ const activeSessions = new Set();
 // Ustawiamy puste tablice, jeśli plik db.json jeszcze nie istnieje
 db.defaults({ users: [], accessLogs: [] }).write();
 
-// Dodawanie Admina i Testera (tylko jeśli baza jest pusta)
-if (db.get('users').size().value() === 0) {
+// --- INICJALIZACJA UŻYTKOWNIKÓW ---
+
+const adminExists = db.get('users').find({ id: 1 }).value();
+if (!adminExists) {
     db.get('users').push({
         id: 1,
         name: "admin",
@@ -36,9 +38,14 @@ if (db.get('users').size().value() === 0) {
         uuid: uuidv4(),
         photoPath: "",
         activeQrToken: false,
-        blocked: false
+        blocked: false,
+        role: "admin"
     }).write();
+    console.log("Dodano użytkownika: admin");
+}
 
+const testExists = db.get('users').find({ id: 2 }).value();
+if (!testExists) {
     db.get('users').push({
         id: 2,
         name: "test",
@@ -46,13 +53,14 @@ if (db.get('users').size().value() === 0) {
         uuid: uuidv4(),
         photoPath: "",
         activeQrToken: false,
-        blocked: false
+        blocked: false,
+        role: "worker"
     }).write();
-    console.log("Zainicjowano bazę danych domyślnymi użytkownikami.");
+    console.log("Dodano użytkownika: test");
 }
-// --- ENDPOINTY ---
 
-// 1. REJESTRACJA PRACOWNIKA (ADMIN)
+// --- ENDPOINTY ---
+// REJESTRACJA PRACOWNIKA (ADMIN)
 app.post('/api/add-employee', upload.single('photo'), (req, res) => {
     const { name, employeeId, password } = req.body;
     const imagePath = req.file.path;
@@ -89,7 +97,8 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
                         uuid: uuidv4(),
                         photoPath: imagePath,
                         activeQrToken: false,
-                        blocked: false
+                        blocked: false,
+                        role: "worker"
                     }).write();
 
                     console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
@@ -110,7 +119,7 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
     });
 });
 
-// 2. GENEROWANIE PRZEPUSTKI (ADMIN)
+
 app.post('/api/generate-qr', (req, res) => {
     const cookies = req.cookies;
 
@@ -118,10 +127,12 @@ app.post('/api/generate-qr', (req, res) => {
     if (cookies.user) {
 
         const user = db.get('users').find({ uuid: cookies.user }).value();
-
         if (!user) return res.status(404).json({ error: "Nie znaleziono pracownika" });
 
-        // Sprawdzamy, czy token już jest aktywny
+        if (user.blocked) {
+            return res.json({ status: 'failure', error: 'Twoje konto jest zablokowane. Brak dostępu.' });
+        }
+
         if (!user.activeQrToken) {
 
             // Generowanie treści tokena
@@ -276,7 +287,73 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
     });
 });
 
-// 4. RAPORTY (ADMIN) - Endpoint dla panelu administratora
+
+
+app.post('/api/toggle-block-user', (req, res) => {
+    const { uuid, block } = req.body;
+
+    const user = db.get('users').find({ uuid: uuid }).value();
+
+    // Zabezpieczenie przed zablokowaniem głównego admina
+    if (user && user.role === 'admin' && user.id === 1) {
+        return res.json({ status: 'failure', error: 'Nie można zablokować głównego administratora.' });
+    }
+
+    // Przygotowujemy zmiany
+    let updates = { blocked: block };
+
+    // --- NOWOŚĆ: Jeśli blokujemy (block === true), to niszczymy token QR ---
+    if (block) {
+        updates.activeQrToken = false;
+    }
+    // -----------------------------------------------------------------------
+
+    db.get('users')
+      .find({ uuid: uuid })
+      .assign(updates) // Zapisujemy zmiany (blokada + ew. usunięcie tokena)
+      .write();
+
+    console.log(`[Admin]: Zmieniono status blokady dla ${user.name} na ${block}`);
+    res.json({ status: 'success' });
+});
+
+app.post('/api/delete-user', (req, res) => {
+    const { uuid } = req.body;
+
+    // Nie pozwól usunąć głównego admina
+    const user = db.get('users').find({ uuid: uuid }).value();
+    if (user && user.role === 'admin' && user.id === 1) {
+        return res.json({ status: 'failure', error: 'Nie można usunąć głównego administratora.' });
+    }
+
+    // Usuwamy z bazy
+    db.get('users')
+      .remove({ uuid: uuid })
+      .write();
+
+    // (Opcjonalnie) Tutaj można by też usunąć plik zdjęcia z folderu uploads używając fs.unlink
+
+    console.log(`[Admin]: Usunięto pracownika ${user ? user.name : 'nieznany'}`);
+    res.json({ status: 'success' });
+});
+
+app.get('/api/get-employees', (req, res) => {
+    // Pobieramy wszystkich z bazy
+    const users = db.get('users').value();
+
+    // Filtrujemy dane wrażliwe (nie wysyłamy hasła ani ścieżki do zdjęcia)
+    const safeUsers = users.map(u => ({
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        uuid: u.uuid,
+        blocked: u.blocked
+    }));
+
+    res.json(safeUsers);
+});
+
+
 app.get('/api/logs', (req, res) => {
     // 1. Pobieramy logi z bazy danych
     const logs = db.get('accessLogs').value();
@@ -289,7 +366,7 @@ app.get('/api/logs', (req, res) => {
     }
 });
 
-// Handler logowania
+
 app.post('/api/login-handle', (req, res) => {
     let loginInfo = req.body
 
@@ -309,14 +386,12 @@ app.post('/api/login-handle', (req, res) => {
     }
 })
 
-// Landing page, decyzja gdzie wysłać usera
 app.get('/', (req, res) => {
     let cookies = req.cookies
     let pageToSend = checkCookie(cookies)
     res.sendFile(pageToSend, { root: '.' });
 })
 
-// Endpoint dla bramki (Kiosku)
 app.get('/gate', (req, res) => {
     res.sendFile('./protected/gate.html', { root: '.' });
 });
@@ -325,9 +400,7 @@ app.get('/gate', (req, res) => {
 function logAttempt(userId, userName, success, reason, time) {
     const entry = { userId, userName, success, reason, time };
 
-    // ROBIMY ZAPIS DO BAZY:
     db.get('accessLogs').push(entry).write();
-
     console.log(`[BRAMKA]: ${success ? 'WEJŚCIE' : 'ODMOWA'} -> ${userName} (${reason})`);
 }
 
@@ -342,10 +415,10 @@ function checkCookie(cookies){
         // Jeśli jest w RAM, to pobieramy szczegóły z bazy
         const user = db.get('users').find({ uuid: cookies.user }).value();
 
-        if (user && user.name === "admin"){
+        if (user && user.role === "admin"){
             return('./protected/adminPage.html');
         }
-        else if (user) {
+        else if (user && user.role === "worker") {
             return('./protected/qr.html');
         }
     }

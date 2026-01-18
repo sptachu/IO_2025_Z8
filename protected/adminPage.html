@@ -56,6 +56,24 @@
             <input type="text" id="qrEmployeeId" placeholder="ID Pracownika">
             <button onclick="generateQR()">Generuj Kod QR</button>
             <div id="qr-display" style="text-align: center; margin-top: 10px;"></div>
+
+            <hr>
+
+            <h3>3. Zarządzanie Pracownikami</h3>
+            <button onclick="loadEmployees()" style="width: auto; background: #17a2b8; margin-bottom: 10px;">Odśwież Listę</button>
+            <table id="employeesTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Imię</th>
+                        <th>Rola</th>
+                        <th>Akcje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+
         </div>
 
         <div class="panel" style="border: 2px solid #007bff;">
