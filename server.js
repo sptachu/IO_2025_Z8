@@ -1,4 +1,5 @@
 //server.js
+require('dotenv').config(); // <--- DODAJ TO NA SAMYM POCZĄTKU
 const express = require('express');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -8,36 +9,47 @@ const cookieParser = require('cookie-parser');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 const { v4: uuidv4 } = require('uuid');
+const low = require('lowdb');
+const FileSync = require('lowdb/adapters/FileSync');
+const pythonPath = process.env.PYTHON_PATH || 'py';
 
 app.use(cookieParser());
 app.use(express.static('public'));
 app.use(express.json());
 
-// --- BAZA DANYCH  ---
-const usersDB = [];     // Tutaj trzymamy pracowników
-// We need this to access admin panel, from where we can add more users.
-usersDB.push({
-    id: 1,
-    name: "admin",
-    password: "admin",
-    uuid: uuidv4(),
-    photoPath: "",
-    activeQrToken: false,
-    blocked: false
-});
+// --- KONFIGURACJA BAZY DANYCH ---
+const adapter = new FileSync('db.json');
+const db = low(adapter);
 
-// For testing purposes
-usersDB.push({
-    id: 2,
-    name: "test",
-    password: "test",
-    uuid: uuidv4(),
-    photoPath: "",
-    activeQrToken: false,
-    blocked: false
-});
-const accessLogs = [];  // Tutaj trzymamy historię wejść (Raporty)
+// Lista aktywnych sesji w RAM (czyści się po restarcie) ---
+const activeSessions = new Set();
 
+// Ustawiamy puste tablice, jeśli plik db.json jeszcze nie istnieje
+db.defaults({ users: [], accessLogs: [] }).write();
+
+// Dodawanie Admina i Testera (tylko jeśli baza jest pusta)
+if (db.get('users').size().value() === 0) {
+    db.get('users').push({
+        id: 1,
+        name: "admin",
+        password: "admin",
+        uuid: uuidv4(),
+        photoPath: "",
+        activeQrToken: false,
+        blocked: false
+    }).write();
+
+    db.get('users').push({
+        id: 2,
+        name: "test",
+        password: "test",
+        uuid: uuidv4(),
+        photoPath: "",
+        activeQrToken: false,
+        blocked: false
+    }).write();
+    console.log("Zainicjowano bazę danych domyślnymi użytkownikami.");
+}
 // --- ENDPOINTY ---
 
 // 1. REJESTRACJA PRACOWNIKA (ADMIN)
@@ -46,7 +58,7 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
     const imagePath = req.file.path;
 
     // Uruchomienie Pythona w celu "stworzenia wektora twarzy"
-    const pythonProcess = spawn('py', ['./check_face.py', imagePath]);
+    const pythonProcess = spawn(pythonPath, ['./check_face.py', imagePath]);
     let resultString = '';
 
     pythonProcess.stdout.on('data', (data) => resultString += data.toString());
@@ -65,25 +77,26 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
             }
 
             if (jsonResult.status){
-                let idBool = true;
-                usersDB.forEach((element) => {
-                    if(element.id == employeeId){
-                        idBool = false;
-                    }
-                })
-                if (idBool){
-                    usersDB.push({
+                // 1. Sprawdzamy czy user istnieje (używamy funkcji, żeby zachować "==" czyli ignorowanie typu liczby/tekstu)
+                const existingUser = db.get('users').find(u => u.id == employeeId).value();
+
+                if (!existingUser) {
+                    // 2. Jeśli NIE istnieje (!existingUser), to dodajemy
+                    db.get('users').push({
                         id: employeeId,
                         name: name,
                         password: password,
                         uuid: uuidv4(),
                         photoPath: imagePath,
-                        activeQrToken: false, // Na początku brak przepustki
-                        blocked: false       // Domyślnie ma uprawnienia
-                    });
+                        activeQrToken: false,
+                        blocked: false
+                    }).write();
+
                     console.log(`[Rejestracja]: Dodano pracownika ${name} (${employeeId})`);
                     res.json({ status: 'success', userId: employeeId });
+
                 } else {
+                    // 3. Jeśli istnieje, zwracamy błąd
                     console.log(`[Rejestracja]: Pokrywające się id, nie dodano pracownika`);
                     res.json({ status: 'failure'});
                 }
@@ -100,46 +113,72 @@ app.post('/api/add-employee', upload.single('photo'), (req, res) => {
 // 2. GENEROWANIE PRZEPUSTKI (ADMIN)
 app.post('/api/generate-qr', (req, res) => {
     const cookies = req.cookies;
+
+    // Sprawdzamy czy użytkownik ma ciasteczko
     if (cookies.user) {
-        const user = usersDB.find(u => u.uuid === cookies.user);
+
+        const user = db.get('users').find({ uuid: cookies.user }).value();
 
         if (!user) return res.status(404).json({ error: "Nie znaleziono pracownika" });
 
+        // Sprawdzamy, czy token już jest aktywny
         if (!user.activeQrToken) {
-            // Generowanie tokena (ważny np. 1 dzień - tu symulujemy)
-            const qrToken = `QR_${user.id}_${Date.now()}`;
-            user.activeQrToken = qrToken;
 
+            // Generowanie treści tokena
+            const qrToken = `QR_${user.id}_${Date.now()}`;
+
+            // Zapisanie tokena w bazie
+            db.get('users')
+              .find({ uuid: cookies.user })
+              .assign({ activeQrToken: qrToken })
+              .write();
+
+            // Ustawienie wygasania (Timeout 5 minut)
             setTimeout(() => {
-                user.activeQrToken = false;
+                // Wewnątrz setTimeout też musimy użyć .write(), bo to dzieje się później
+                db.get('users')
+                  .find({ uuid: cookies.user })
+                  .assign({ activeQrToken: false })
+                  .write();
+
                 console.log(`QR for ${user.name} has expired and been cleared.`);
-            }, 300000);
+            }, 300000); // 300000 ms = 5 minut
 
             console.log(`Użytkownik ${user.name} wygenerował kod QR`);
             res.json({ status: 'success', qrToken: qrToken });
+
         } else {
             res.json({ status: 'failure', error: 'Kod QR jest już aktywny' });
         }
     } else {
-        location.reload()
+        // Jeśli nie ma ciasteczka
+        res.status(401).json({ error: "Brak autoryzacji" });
     }
 });
 
 app.post('/api/generate-qr-admin', (req, res) => {
     const { employeeId } = req.body;
-    console.log(employeeId)
-    const user = usersDB.find(u => u.id === employeeId);
-    console.log(user)
+
+    // Szukamy usera w bazie db.json
+    const user = db.get('users').find(u => u.id == employeeId).value();
 
     if (!user) return res.status(404).json({ error: "Nie znaleziono pracownika" });
 
     if (!user.activeQrToken) {
-        // Generowanie tokena (ważny np. 1 dzień - tu symulujemy)
+        // Generowanie tokena
         const qrToken = `QR_${employeeId}_${Date.now()}`;
-        user.activeQrToken = qrToken;
+
+        // Zapisujemy token do bazy plikowej
+        db.get('users')
+          .find(u => u.id == employeeId)
+          .assign({ activeQrToken: qrToken })
+          .write(); // Zapis na dysk
 
         setTimeout(() => {
-            user.activeQrToken = false;
+            db.get('users')
+              .find(u => u.id == employeeId)
+              .assign({ activeQrToken: false })
+              .write();
             console.log(`QR dla użytkownika ${user.name} wygasł`);
         }, 60000);
 
@@ -148,22 +187,22 @@ app.post('/api/generate-qr-admin', (req, res) => {
     } else {
         res.json({ status: 'failure', error: 'Kod QR jest już aktywny' });
     }
-
 });
 
 app.post('/api/checkForQR', (req, res) => {
     const cookies = req.cookies;
-    const user = usersDB.find(u => u.uuid === cookies.user);
 
-    if (user.activeQrToken) {
+    //  Pobieramy usera z bazy
+    const user = db.get('users').find({ uuid: cookies.user }).value();
+
+    if (user && user.activeQrToken) {
         res.json({ status: true, qrToken: user.activeQrToken });
     } else {
         res.json({status: false})
     }
 })
 
-// 3. BRAMKA WEJŚCIOWA (KIOSK)  ROZBUDOWANE "PROCESS IMAGE"
-// Skan QR + Analiza Twarzy
+
 app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
     const { qrToken } = req.body; // Odczytany kod QR
     const gateImagePath = req.file.path; // Zdjęcie z kamery na bramce
@@ -174,7 +213,7 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
     let identifiedUser = null;
 
     // KROK 1: Weryfikacja QR (Czy istnieje i czy ważny)
-    const user = usersDB.find(u => u.activeQrToken === qrToken);
+    const user = db.get('users').find({ activeQrToken: qrToken }).value();
 
     if (!user) {
         // SCENARIUSZ: Próba wejścia na nieważny/fałszywy bilet
@@ -194,7 +233,7 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
 
     // KROK 3: Weryfikacja Biometryczna (Python)
     // Uruchamiamy skrypt na zdjęciu z bramki, żeby sprawdzić, czy to "twarz"
-    const pythonProcess = spawn('py', ['./compare_faces.py', gateImagePath, user.photoPath]);
+    const pythonProcess = spawn(pythonPath, ['./compare_faces.py', gateImagePath, user.photoPath]);
     let resultString = '';
 
     pythonProcess.stdout.on('data', (data) => resultString += data.toString());
@@ -239,20 +278,33 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
 
 // 4. RAPORTY (ADMIN) - Endpoint dla panelu administratora
 app.get('/api/logs', (req, res) => {
-    res.json(accessLogs.reverse()); // Najnowsze na górze
+    // 1. Pobieramy logi z bazy danych
+    const logs = db.get('accessLogs').value();
+
+    // 2. Wysyłamy odwrócone (najnowsze na górze)
+    if (logs) {
+        res.json(logs.slice().reverse());
+    } else {
+        res.json([]);
+    }
 });
 
 // Handler logowania
 app.post('/api/login-handle', (req, res) => {
     let loginInfo = req.body
-    let foundBool = false;
-    usersDB.forEach((element) => {
-        if (element.name == loginInfo.name && element.password == loginInfo.password){
-            foundBool = true
-            res.json({status: true, uuid: element.uuid})
-        }
-    })
-    if (!foundBool){
+
+    // 1. Sprawdzamy czy user istnieje w bazie (trwałe dane)
+    const user = db.get('users').find({
+        name: loginInfo.name,
+        password: loginInfo.password
+    }).value();
+
+    if (user){
+        // 2. Dodajemy go do aktywnych sesji w RAM
+        activeSessions.add(user.uuid);
+
+        res.json({status: true, uuid: user.uuid})
+    } else {
         res.json({status: false})
     }
 })
@@ -272,21 +324,32 @@ app.get('/gate', (req, res) => {
 // Funkcja pomocnicza do logowania
 function logAttempt(userId, userName, success, reason, time) {
     const entry = { userId, userName, success, reason, time };
-    accessLogs.push(entry);
+
+    // ROBIMY ZAPIS DO BAZY:
+    db.get('accessLogs').push(entry).write();
+
     console.log(`[BRAMKA]: ${success ? 'WEJŚCIE' : 'ODMOWA'} -> ${userName} (${reason})`);
 }
 
 // Funkcja pomocnicza do sprawdzania ciasteczek
 function checkCookie(cookies){
     if (cookies.user) {
-        if (cookies.user == usersDB[0].uuid){
-            return('./protected/adminPage.html')
-        } else {
-            return('./protected/qr.html')
+
+        if (!activeSessions.has(cookies.user)) {
+            return('./protected/login.html');
         }
-    } else {
-        return('./protected/login.html')
+
+        // Jeśli jest w RAM, to pobieramy szczegóły z bazy
+        const user = db.get('users').find({ uuid: cookies.user }).value();
+
+        if (user && user.name === "admin"){
+            return('./protected/adminPage.html');
+        }
+        else if (user) {
+            return('./protected/qr.html');
+        }
     }
+    return('./protected/login.html');
 }
 
 app.listen(3000, () => console.log('System Kontroli Dostępu (Server + Kiosk) działa na porcie 3000'));
