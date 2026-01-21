@@ -16,7 +16,7 @@
       "password": "test",
       "uuid": "88843255-0ae7-4046-acf7-430281d72fdf",
       "photoPath": "",
-      "activeQrToken": false,
+      "activeQrToken": "QR_2_1769019602268",
       "blocked": false,
       "role": "worker"
     }

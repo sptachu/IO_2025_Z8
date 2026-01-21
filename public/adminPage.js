@@ -159,6 +159,9 @@ async function loadLogs() {
             <td>${log.userName}</td>
             <td>${log.success ? '✅ SUKCES' : '⛔ BLOKADA'}</td>
             <td>${log.reason}</td>
+            <td>
+                <a href="/api/download-photo/${encodeURIComponent(log.photoPath)}" download>Pobierz</a>
+            </td>
         </tr>
     `).join('');
 }

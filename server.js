@@ -8,6 +8,7 @@ const fs = require('fs');
 const cookieParser = require('cookie-parser');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
+const gateUpload = multer({ dest: 'gateUploads/'})
 const { v4: uuidv4 } = require('uuid');
 const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
@@ -153,7 +154,7 @@ app.post('/api/generate-qr', (req, res) => {
                   .write();
 
                 console.log(`QR for ${user.name} has expired and been cleared.`);
-            }, 300000); // 300000 ms = 5 minut
+            }, 300000);
 
             console.log(`Użytkownik ${user.name} wygenerował kod QR`);
             res.json({ status: 'success', qrToken: qrToken });
@@ -191,7 +192,7 @@ app.post('/api/generate-qr-admin', (req, res) => {
               .assign({ activeQrToken: false })
               .write();
             console.log(`QR dla użytkownika ${user.name} wygasł`);
-        }, 60000);
+        }, 300000);
 
         console.log(`[Admin]: Wygenerowano QR dla ${user.name}`);
         res.json({ status: 'success', qrToken: qrToken });
@@ -214,7 +215,7 @@ app.post('/api/checkForQR', (req, res) => {
 })
 
 
-app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
+app.post('/api/verify-entry', gateUpload.single('gatePhoto'), (req, res) => {
     const { qrToken } = req.body; // Odczytany kod QR
     const gateImagePath = req.file.path; // Zdjęcie z kamery na bramce
 
@@ -229,7 +230,7 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
     if (!user) {
         // SCENARIUSZ: Próba wejścia na nieważny/fałszywy bilet
         denialReason = "Nieprawidłowy lub nieważny kod QR";
-        logAttempt(null, "Nieznany", false, denialReason, timestamp);
+        logAttempt(null, "Nieznany", false, denialReason, timestamp, gateImagePath);
         return res.json({ status: 'denied', message: denialReason });
     }
 
@@ -238,7 +239,7 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
     // KROK 2: Sprawdzenie uprawnień
     if (user.blocked) {
         denialReason = "Pracownik zablokowany/Brak uprawnień";
-        logAttempt(user.id, user.name, false, denialReason, timestamp);
+        logAttempt(user.id, user.name, false, denialReason, timestamp, gateImagePath);
         return res.json({ status: 'denied', message: denialReason });
     }
 
@@ -269,14 +270,14 @@ app.post('/api/verify-entry', upload.single('gatePhoto'), (req, res) => {
             }
 
             if (accessGranted) {
-                logAttempt(user.id, user.name, true, "OK", timestamp);
+                logAttempt(user.id, user.name, true, "OK", timestamp, gateImagePath);
                 res.json({
                     status: 'allowed',
                     message: `Witaj, ${user.name}!`,
                     details: jsonResult.message
                 });
             } else {
-                logAttempt(user.id, user.name, false, denialReason, timestamp);
+                logAttempt(user.id, user.name, false, denialReason, timestamp, gateImagePath);
                 res.json({ status: 'denied', message: denialReason });
             }
 
@@ -396,9 +397,26 @@ app.get('/gate', (req, res) => {
     res.sendFile('./protected/gate.html', { root: '.' });
 });
 
+// Funkcja pomocnicza do pobierania obrazów
+app.get('/api/download-photo/:filename', (req, res) => {
+    const fileName = req.params.filename;
+
+    const filePath = path.join(__dirname, fileName);
+
+    const hash = path.basename(filePath);
+    const downloadName = `Gate_Photo_${hash}.jpg`;
+    
+    res.download(filePath, downloadName, (err) => {
+        if (err) {
+            console.error("File failed to download:", err);
+            res.status(404).send("Photo not found.");
+        }
+    });
+});
+
 // Funkcja pomocnicza do logowania
-function logAttempt(userId, userName, success, reason, time) {
-    const entry = { userId, userName, success, reason, time };
+function logAttempt(userId, userName, success, reason, time, photoPath) {
+    const entry = { userId, userName, success, reason, time, photoPath };
 
     db.get('accessLogs').push(entry).write();
     console.log(`[BRAMKA]: ${success ? 'WEJŚCIE' : 'ODMOWA'} -> ${userName} (${reason})`);
