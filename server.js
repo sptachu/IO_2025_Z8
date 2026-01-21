@@ -229,7 +229,7 @@ app.post('/api/verify-entry', gateUpload.single('gatePhoto'), (req, res) => {
 
     if (!user) {
         // SCENARIUSZ: Próba wejścia na nieważny/fałszywy bilet
-        denialReason = "Nieprawidłowy lub nieważny kod QR";
+        denialReason = "Nieprawidłowa przepustka";
         logAttempt(null, "Nieznany", false, denialReason, timestamp, gateImagePath);
         return res.json({ status: 'denied', message: denialReason });
     }
