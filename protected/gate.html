@@ -176,7 +176,7 @@
             updateUI("KOD OK! Ustaw twarz w owalu...", "processing");
 
             // 1. Krótka pauza na stabilizację ostrości
-            await new Promise(r => setTimeout(r, 1200));
+            await new Promise(r => setTimeout(r, 2000));
 
             // 2. SKALOWANIE: Zmniejszamy obraz do 400px szerokości, by przyspieszyć Python
             const targetWidth = 400;
