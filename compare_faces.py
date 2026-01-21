@@ -36,12 +36,12 @@ def process_image(gate_image_path, database_image_path):
         if matches:
             result = {
                 "status": True,
-                "message": "Twarze są zgodne, dostęp przyznany"
+                "message": "Zapraszamy"
             }
         else:
             result = {
                 "status": False,
-                "message": "Twarze nie pasują do siebie"
+                "message": "Błąd werfikacji twarzy. Odmowa."
             }
 
         print(json.dumps(result))

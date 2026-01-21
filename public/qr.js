@@ -22,11 +22,11 @@ function displayQRCode(token) {
     // Blokujemy przycisk na czas aktywności kodu (opcjonalnie)
     document.getElementById('qrButton').disabled = true;
 
-    // Po 60 sekundach przywracamy możliwość generowania
+    // Po 5 minutach przywracamy możliwość generowania
     setTimeout(() => {
         display.innerHTML = '<p id="qr-placeholder">Kod wygasł. Wygeneruj nowy.</p>';
         document.getElementById('qrButton').disabled = false;
-    }, 60000);
+    }, 300000);
 }
 
 // 1. Sprawdzanie czy kod już istnieje (wywoływane przy starcie)
