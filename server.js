@@ -45,21 +45,6 @@ if (!adminExists) {
     console.log("Dodano użytkownika: admin");
 }
 
-const testExists = db.get('users').find({ id: 2 }).value();
-if (!testExists) {
-    db.get('users').push({
-        id: 2,
-        name: "test",
-        password: "test",
-        uuid: uuidv4(),
-        photoPath: "",
-        activeQrToken: false,
-        blocked: false,
-        role: "worker"
-    }).write();
-    console.log("Dodano użytkownika: test");
-}
-
 // --- ENDPOINTY ---
 // REJESTRACJA PRACOWNIKA (ADMIN)
 app.post('/api/add-employee', upload.single('photo'), (req, res) => {
