@@ -18,17 +18,17 @@ app.use(cookieParser());
 app.use(express.static('public'));
 app.use(express.json());
 
-// --- KONFIGURACJA BAZY DANYCH ---
+// KONFIGURACJA BAZY DANYCH
 const adapter = new FileSync('db.json');
 const db = low(adapter);
 
-// Lista aktywnych sesji w RAM (czyści się po restarcie) ---
+// Lista aktywnych sesji w RAM (czyści się po restarcie)
 const activeSessions = new Set();
 
 // Ustawiamy puste tablice, jeśli plik db.json jeszcze nie istnieje
 db.defaults({ users: [], accessLogs: [] }).write();
 
-// --- INICJALIZACJA UŻYTKOWNIKÓW ---
+// INICJALIZACJA UŻYTKOWNIKÓW
 
 const adminExists = db.get('users').find({ id: 1 }).value();
 if (!adminExists) {
@@ -45,7 +45,7 @@ if (!adminExists) {
     console.log("Dodano użytkownika: admin");
 }
 
-// --- ENDPOINTY ---
+// Endpointy
 // REJESTRACJA PRACOWNIKA (ADMIN)
 app.post('/api/add-employee', upload.single('photo'), (req, res) => {
     const { name, employeeId, password } = req.body;
@@ -288,15 +288,13 @@ app.post('/api/toggle-block-user', (req, res) => {
     // Przygotowujemy zmiany
     let updates = { blocked: block };
 
-    // --- NOWOŚĆ: Jeśli blokujemy (block === true), to niszczymy token QR ---
     if (block) {
         updates.activeQrToken = false;
     }
-    // -----------------------------------------------------------------------
 
     db.get('users')
       .find({ uuid: uuid })
-      .assign(updates) // Zapisujemy zmiany (blokada + ew. usunięcie tokena)
+      .assign(updates) 
       .write();
 
     console.log(`[Admin]: Zmieniono status blokady dla ${user.name} na ${block}`);
@@ -427,5 +425,6 @@ function checkCookie(cookies){
     }
     return('./protected/login.html');
 }
+
 
 app.listen(3000, () => console.log('System Kontroli Dostępu (Server + Kiosk) działa na porcie 3000'));
